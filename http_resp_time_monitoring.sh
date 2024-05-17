@@ -11,12 +11,13 @@ function usage()
     echo "- Without specifying -f <interval>, the script will execute every 10s"
     echo "- Without specifying -t <threshold>, the default will be 1000ms"
     echo "###Threshold: when the HTTP Response time reaches the threshold from the working instance, the script will automatically take memory dump for that instance"
+    echo "-a  is used to append curl options, e.g -a '--resolve hostname:80:127.0.0.1'"
 }
 function die()
 {
     echo "$1" && exit $2
 }
-while getopts ":t:i:l:f:h" opt; do
+while getopts ":t:i:l:f:a:h" opt; do
     case $opt in
         t) 
            threshold=$OPTARG
@@ -29,6 +30,9 @@ while getopts ":t:i:l:f:h" opt; do
            ;;
         f)
            frequency=$OPTARG
+           ;;
+        a)
+           append="$OPTARG"
            ;;
         h)
            usage
@@ -88,7 +92,7 @@ while true; do
     
     # Your command to output to the file (example: echo "Some output" >> "$output_file")
   echo "Poll complete. Waiting for $frequency seconds..."
-    ./get_http_response_time.sh $threshold $instance $location >> "$output_file"
+    ./get_http_response_time.sh $threshold $instance $location "$append" >> "$output_file"
 
     # Wait for 10 seconds before the next run
     sleep $frequency

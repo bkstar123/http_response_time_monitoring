@@ -7,16 +7,17 @@
 #
 
 # Threshold for http response time at which the working instance will trigger memory dump 
-export threshold=$1
+threshold=$1
 
 # Instance name or ID
-export instance=$2
+instance=$2
 
 # URL to monitor HTTP Response time for
-export url=$3
+url=$3
+curl_append_string="$4"
 
 # Read HTTP Response time & Status code into separated variables
-read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" $url)
+read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" $url $curl_append_string)
 
 # Convert to miliseconds
 respTimeinMiliSeconds=$(echo "$respTimeInSeconds*1000/1" | bc)
