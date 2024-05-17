@@ -61,7 +61,14 @@ fi
 
 # Validate if curl is installed
 if ! command -v curl &> /dev/null; then
-    echo "###Info: curl is not installed. Please install it before using the script."
+    echo "###Info: curl is not installed. Installing curl...."
+    apt-get update && apt-get install -y curl
+fi
+
+# Validate if bc is installed
+if ! command -v bc &> /dev/null; then
+    echo "###Info: bc is not installed. Installing bc...."
+    apt-get update && apt-get install -y bc
 fi
 
 # Output dir is named after instance name
