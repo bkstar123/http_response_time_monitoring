@@ -31,13 +31,29 @@ function teardown()
     echo "Completed"
     exit 0
 }
+function getsasurl()
+{
+    # $1-pid
+    sas_url=$(cat "/proc/$1/environ" | tr '\0' '\n' | grep -w DIAGNOSTICS_AZUREBLOBCONTAINERSASURL)
+    sas_url=${sas_url#*=}
+    return sas_url
+}
 function collectdump()
 {
     # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
     if [[ ! -e "$2" ]]; then
         echo "Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "Collecting memory dump...." >> "$1"
+        dump_file="dump_$3_$(date '+%Y%m%d %H%M%S').dmp"
+        sas_url=$(getsasurl "$4")
         /tools/dotnet-dump collect -p "$4" &
+        dump_pid=$!
+        wait dump_pid
+        echo "Memmory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        /tools/azcopy copy "$dump_file" "$sas_url" &
+        upload_pid=$!
+        wait upload_pid
+        echo "Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi 
 }
 function collecttrace()
