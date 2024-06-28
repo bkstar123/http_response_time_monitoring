@@ -46,7 +46,7 @@ function collectdump()
     if [[ ! -e "$2" ]]; then
         echo "Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "Collecting memory dump...." >> "$1"
-        local dump_file="dump_$3_$(date '+%Y%m%d %H%M%S').dmp"
+        local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
         local sas_url=$(getsasurl "$4")
         /tools/dotnet-dump collect -p "$4" -o "$dump_file"
         echo "Memmory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
@@ -60,7 +60,7 @@ function collecttrace()
     if [[ ! -e "$2" ]]; then
         echo "Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
         echo "Collecting profiler trace...." >> "$1"
-        local trace_file="trace_$3_$(date '+%Y%m%d %H%M%S').nettrace"
+        local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
         /tools/dotnet-trace collect -p "$4" -o "$trace_file"
         sleep 60 # Wait 60s before stop tracing
