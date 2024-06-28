@@ -36,7 +36,7 @@ function getsasurl()
     # $1-pid
     sas_url=$(cat "/proc/$1/environ" | tr '\0' '\n' | grep -w DIAGNOSTICS_AZUREBLOBCONTAINERSASURL)
     sas_url=${sas_url#*=}
-    return sas_url
+    echo "$sas_url"
 }
 function collectdump()
 {
@@ -44,15 +44,11 @@ function collectdump()
     if [[ ! -e "$2" ]]; then
         echo "Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
         echo "Collecting memory dump...." >> "$1"
-        dump_file="dump_$3_$(date '+%Y%m%d %H%M%S').dmp"
-        sas_url=$(getsasurl "$4")
-        /tools/dotnet-dump collect -p "$4" &
-        dump_pid=$!
-        wait dump_pid
+        local dump_file="dump_$3_$(date '+%Y%m%d %H%M%S').dmp"
+        local sas_url=$(getsasurl "$4")
+        /tools/dotnet-dump collect -p "$4" -o "$dump_file"
         echo "Memmory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
-        /tools/azcopy copy "$dump_file" "$sas_url" &
-        upload_pid=$!
-        wait upload_pid
+        /tools/azcopy copy "$dump_file" "$sas_url"
         echo "Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi 
 }
@@ -62,11 +58,16 @@ function collecttrace()
     if [[ ! -e "$2" ]]; then
         echo "Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
         echo "Collecting profiler trace...." >> "$1"
-        /tools/dotnet-trace collect -p "$4" &
+        local trace_file="trace_$3_$(date '+%Y%m%d %H%M%S').nettrace"
+        local sas_url=$(getsasurl "$4")
+        /tools/dotnet-trace collect -p "$4" -o "$trace_file"
         sleep 60 # Wait 60s before stop tracing
         echo "Stopping profiler tracing" >> "$1"
         kill -SIGTERM $(ps -ef | grep "/tools/dotnet-trace" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
         echo "The profiler trace has been stoppped" >> "$1" 
+        echo "Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        /tools/azcopy copy "$trace_file" "$sas_url"
+        echo "Profiler has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi
 }
 while getopts ":t:i:l:f:o:hc" opt; do
@@ -198,11 +199,11 @@ while true; do
     # Collect memory dump if HTTP response time reaches the threshold & HTTP code is in [200, 301, 302]  
     if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]]; then
         if [[ "$enable_dump" == true  ]]; then
-            collectdump "$output_file" "$dump_lock_file" "$instance" "$pid"
+            collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
         fi
 
         if [[ "$enable_trace" == true ]]; then
-            collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid"
+            collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
         fi  
     fi
     # Wait for the next polling
