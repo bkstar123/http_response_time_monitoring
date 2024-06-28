@@ -44,32 +44,32 @@ function collectdump()
 {
     # $1-$output_file, $2-$dump_lock_file, $3-$instance, $4-$pid
     if [[ ! -e "$2" ]]; then
-        echo "Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
-        echo "Collecting memory dump...." >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for dumping..." >> "$1" && touch "$2" && echo "Memory dump is collected by $3" >> "$2"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting memory dump...." >> "$1"
         local dump_file="dump_$3_$(date '+%Y%m%d_%H%M%S').dmp"
         local sas_url=$(getsasurl "$4")
         /tools/dotnet-dump collect -p "$4" -o "$dump_file"
-        echo "Memmory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Memmory dump has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
         /tools/azcopy copy "$dump_file" "$sas_url"
-        echo "Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi 
 }
 function collecttrace()
 {
     # $1-$output_file, $2-$trace_lock_file, $3-$instance, $4-$pid
     if [[ ! -e "$2" ]]; then
-        echo "Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
-        echo "Collecting profiler trace...." >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Acquiring lock for tracing..." >> "$1" && touch "$2" && echo "Profiler trace is collected by $3" >> "$2"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace...." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
-        /tools/dotnet-trace collect -p "$4" -o "$trace_file"
+        /tools/dotnet-trace collect -p "$4" -o "$trace_file" &
         sleep 60 # Wait 60s before stop tracing
-        echo "Stopping profiler tracing" >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Stopping profiler tracing" >> "$1"
         kill -SIGTERM $(ps -ef | grep "/tools/dotnet-trace" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
-        echo "The profiler trace has been stoppped" >> "$1" 
-        echo "Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): The profiler trace has been stoppped" >> "$1" 
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
         /tools/azcopy copy "$trace_file" "$sas_url"
-        echo "Profiler has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi
 }
 while getopts ":t:i:l:f:o:hc" opt; do
