@@ -68,11 +68,7 @@ function collecttrace()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Collecting profiler trace...." >> "$1"
         local trace_file="trace_$3_$(date '+%Y%m%d_%H%M%S').nettrace"
         local sas_url=$(getsasurl "$4")
-        /tools/dotnet-trace collect -p "$4" -o "$trace_file" > /dev/null &
-        sleep 60 # Wait 60s before stop tracing
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Stopping profiler tracing" >> "$1"
-        kill -SIGTERM $(ps -ef | grep "/tools/dotnet-trace" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): The profiler trace has been stoppped" >> "$1" 
+        /tools/dotnet-trace collect -p "$4" -o "$trace_file" --duration 00:01:00 > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been collected. Uploading it to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
         /tools/azcopy copy "$trace_file" "$sas_url" > /dev/null
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
