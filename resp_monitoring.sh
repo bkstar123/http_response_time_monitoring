@@ -74,7 +74,7 @@ function collecttrace()
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler has been uploaded to Azure Blob Container 'insights-logs-appserviceconsolelogs'" >> "$1"
     fi
 }
-while getopts ":t:l:f:o:hc" opt; do
+while getopts ":t:l:f:hc" opt; do
     case $opt in
         t) 
            threshold=$OPTARG
@@ -84,9 +84,6 @@ while getopts ":t:l:f:o:hc" opt; do
            ;;
         f)
            frequency=$OPTARG
-           ;;
-        o)
-           option=$OPTARG
            ;;
         h)
            usage
