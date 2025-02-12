@@ -6,7 +6,7 @@
 # author: Tuan Hoang
 # 21 June 2024
 # Updated: Mainul Hossain
-# 11 Feb 2025
+# 12 Feb 2025
 script_name=${0##*/}
 function usage()
 {
