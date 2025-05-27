@@ -6,12 +6,12 @@
 # author: Tuan Hoang
 # 21 June 2024
 # Updated: Mainul Hossain
-# 26 May 2025
+# 27 May 2025
 script_name=${0##*/}
 function usage()
 {
     echo "###Syntax: $script_name -t <threshold> -l <URL> -f <interval>"
-    echo "-l <URL> option to tell which URL to monitor http response time, format: http://hostname:port, If not given, then will be defaulted to http://localhost:80"
+    echo "-l <URL> option to tell which URL to monitor http response time, format: http://hostname:port or https://hostname:port, If not given, then will be defaulted to http://localhost:80"
     echo "-f <interval> tells how frequent (in second) to poll the application, if not given, then will poll the application every 10s"
     echo "-t <threshold> tells the threshold (in ms) of application response time to collect dump/trace, if not given then will be defaulted to 1000ms"
 }
@@ -131,6 +131,17 @@ function collecttrace()
     fi
 }
 
+# Function to determine if URL is external or local
+function is_external_url() {
+    local url="$1"
+    # Check if URL starts with http:// or https:// and doesn't contain localhost or 127.0.0.1
+    if [[ "$url" =~ ^https?:// ]] && [[ ! "$url" =~ localhost ]] && [[ ! "$url" =~ 127\.0\.0\.1 ]]; then
+        return 0  # true - it's external
+    else
+        return 1  # false - it's local
+    fi
+}
+
 while getopts ":t:l:f:hc" opt; do
     case $opt in
         t) 
@@ -208,17 +219,39 @@ if ! command -v bc &> /dev/null; then
     echo "###Info: bc is not installed. Installing bc...."
     apt-get update && apt-get install -y bc
 fi
-# Find the PID of the .NET application
-pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
-if [ -z "$pid" ]; then
-    die "There is no .NET process running" 1
+
+# Check if we're monitoring an external URL
+is_external=$(is_external_url "$location")
+
+# Only try to find .NET process if we're monitoring localhost or collecting dumps/traces
+if [[ $is_external -eq 1 ]] || [[ "$enable_dump" == true ]] || [[ "$enable_trace" == true ]]; then
+    # Find the PID of the .NET application
+    pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
+    if [ -z "$pid" ]; then
+        if [[ "$enable_dump" == true ]] || [[ "$enable_trace" == true ]]; then
+            die "There is no .NET process running, cannot collect dumps/traces" 1
+        else
+            echo "###Warning: No .NET process found, but continuing with external URL monitoring"
+            pid=""
+        fi
+    fi
+
+    # Get the computer name from /proc/PID/environ, where PID is .net core process's pid (if we have a PID)
+    if [[ -n "$pid" ]]; then
+        instance=$(getcomputername "$pid")
+        if [[ -z "$instance" ]]; then
+            echo "###Warning: Cannot find the environment variable of COMPUTERNAME, using hostname instead"
+            instance=$(hostname)
+        fi
+    else
+        instance=$(hostname)
+    fi
+else
+    # For external monitoring without dumps/traces, use hostname
+    instance=$(hostname)
+    pid=""
 fi
 
-# Get the computer name from /proc/PID/environ, where PID is .net core process's pid
-instance=$(getcomputername "$pid")
-if [[ -z "$instance" ]]; then
-    die "Cannot find the environment variable of COMPUTERNAME" >&2 1
-fi
 # Output dir is named after instance name
 output_dir="resptime-logs-$instance"
 # Create output directory if it doesn't exist
@@ -228,11 +261,18 @@ mkdir -p "$output_dir"
 dump_lock_file="dump_taken_${instance}.lock"
 trace_lock_file="trace_taken_${instance}.lock"
 
-# Set timeout for curl command as 5s after exceeding the threshold
-timeout=$(( threshold + 5000 ))
+# Set timeout for curl command as 5s after exceeding the threshold (convert to seconds)
+timeout_seconds=$(( (threshold + 5000) / 1000 ))
 # Extract host:port part of the monitored URL
 url="${location#*://}"
 host_and_port="${url%%/*}"
+
+echo "###Info: Starting monitoring of $location with threshold ${threshold}ms every ${frequency}s"
+if [[ $is_external -eq 0 ]]; then
+    echo "###Info: External URL detected - monitoring via internet"
+else
+    echo "###Info: Local URL detected - monitoring via localhost"
+fi
 
 # Start monitoring
 while true; do
@@ -245,29 +285,33 @@ while true; do
     fi
 
     # Handle different URL monitoring scenarios
-    if [[ "$location" == "http://localhost"* ]]; then
+    if [[ $is_external -eq 0 ]]; then
+        # External URL - make direct request to the internet
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds "$location")
+    elif [[ "$location" == "http://localhost"* ]]; then
         # For direct localhost URLs, use the original approach
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout "$location" --resolve "$host_and_port":127.0.0.1)
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds "$location" --resolve "$host_and_port":127.0.0.1)
     elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
         # Special handling for www.unlimitedvacationclub.com (virtual host)
         # Use simple approach that you confirmed works
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds -H "Host:$host_and_port" "http://localhost")
     else
-        # For other URLs, try normal connection with Host header
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout -H "Host:$host_and_port" "http://localhost")
+        # For other local URLs, try normal connection with Host header
+        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds -H "Host:$host_and_port" "http://localhost")
     fi
     
     curl_code=$?
     if [[ $curl_code -eq 28 ]]; then
-        respTimeinMiliSeconds=$timeout
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): CURL request has been timed out" >> "$output_file"
+        respTimeinMiliSeconds=$((timeout_seconds * 1000))
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): CURL request has been timed out (>${timeout_seconds}s)" >> "$output_file"
     else
         # Convert to miliseconds
         respTimeinMiliSeconds=$(echo "$respTimeInSeconds*1000/1" | bc)
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Response Time $respTimeinMiliSeconds (ms), Status Code $httpCode for $location" >> "$output_file"
     fi   
-    # Collect memory dump if HTTP response time reaches the threshold
-    if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]]; then
+    
+    # Collect memory dump if HTTP response time reaches the threshold (only if we have a PID)
+    if [[ "$respTimeinMiliSeconds" -ge "$threshold" ]] && [[ -n "$pid" ]]; then
         if [[ "$enable_dump" == true  ]]; then
             collectdump "$output_file" "$dump_lock_file" "$instance" "$pid" &
         fi
@@ -276,6 +320,7 @@ while true; do
             collecttrace "$output_file" "$trace_lock_file" "$instance" "$pid" &
         fi  
     fi
+    
     # Wait for the next polling
     sleep $frequency
 done
